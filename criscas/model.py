@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 from torch import nn
 
@@ -29,8 +30,9 @@ class SH_SelfAttention(nn.Module):
         X_k_scaled = X_k / (self.embed_size ** (1/4))
         
         attn_w = torch.bmm(X_q_scaled, X_k_scaled.transpose(1,2))
-        
+        # (batch, sequence length, sequence length)
         attn_w_normalized = self.softmax(attn_w)
+        # print('attn_w_normalized.shape', attn_w_normalized.shape)
         
         # reweighted value vectors
         z = torch.bmm(attn_w_normalized, X_v)
@@ -60,14 +62,16 @@ class MH_SelfAttention(nn.Module):
         """
         
         out = []
-        for SH_layer in self.multihead_pipeline:
-            z, __ = SH_layer(X)
+        attn_dict = {}
+        for count, SH_layer in enumerate(self.multihead_pipeline):
+            z, attn_w = SH_layer(X)
             out.append(z)
+            attn_dict[f'h{count}'] = attn_w
         # concat on the feature dimension
         out = torch.cat(out, -1) 
         
         # return a unified vector mapping of the different self-attention blocks
-        return self.Wz(out)
+        return self.Wz(out), attn_dict
         
 
 class TransformerUnit(nn.Module):
@@ -97,8 +101,8 @@ class TransformerUnit(nn.Module):
         Args:
             X: tensor, (batch, sequence length, input_size)
         """
-        # z is tensor of size (batch, ddi similarity type vector, input_size)
-        z = self.multihead_attn(X)
+        # z is tensor of size (batch, sequence length, input_size)
+        z, attn_mhead_dict = self.multihead_attn(X)
         # layer norm with residual connection
         z = self.layernorm_1(z + X)
         z = self.dropout(z)
@@ -106,9 +110,12 @@ class TransformerUnit(nn.Module):
         z = self.layernorm_2(z_ff + z)
         z = self.dropout(z)
         
-        return z
+        return z, attn_mhead_dict
 
-# TODO: implement position encoder based on cosine and sine approach by original Transformers paper ('Attention is all what you need')
+"""
+TODO: implement position encoder based on cosine and sine approach proposed 
+      by original Transformers paper ('Attention is all what you need')
+"""
         
 class NucleoPosEmbedder(nn.Module):
     def __init__(self, num_nucleotides, seq_length, embedding_dim):
@@ -123,17 +130,60 @@ class NucleoPosEmbedder(nn.Module):
         """
         X_emb = self.nucleo_emb(X)
         bsize, seqlen, featdim = X_emb.size()
-        positions = torch.arange(seqlen)
+        device = X_emb.device
+        positions = torch.arange(seqlen).to(device)
         positions_emb = self.pos_emb(positions)[None, :, :].expand(bsize, seqlen, featdim)
         # (batch, sequence length, embedding dim)
         X_embpos = X_emb + positions_emb
         return X_embpos
 
+class FeatureEmbAttention(nn.Module):
+    def __init__(self, input_dim):
+        '''
+        Args:
+            attn_method: string, {'additive', 'dot', 'dot_scaled'}
+            input_dim: int, size of the input vector (i.e. feature vector)
+        '''
+
+        super(FeatureEmbAttention, self).__init__()
+        self.input_dim = input_dim
+        # use this as query vector against the transformer outputs
+        self.queryv = nn.Parameter(torch.randn(input_dim, dtype=torch.float32), requires_grad=True)
+        self.softmax = nn.Softmax(dim=1) # normalized across seqlen
+
+    def forward(self, X):
+        '''Performs forward computation
+        Args:
+            X: torch.Tensor, (bsize, seqlen, feature_dim), dtype=torch.float32
+        '''
+
+        X_scaled = X / (self.input_dim ** (1/4))
+        queryv_scaled = self.queryv / (self.input_dim ** (1/4))
+        # using  matmul to compute tensor vector multiplication
+        
+        # (bsize, seqlen)
+        attn_weights = X_scaled.matmul(queryv_scaled)
+
+        # softmax
+        attn_weights_norm = self.softmax(attn_weights)
+
+        # reweighted value vectors (in this case reweighting the original input X)
+        # unsqueeze attn_weights_norm to get (bsize, 1, seqlen)
+        # perform batch multiplication with X that has shape (bsize, seqlen, feat_dim)
+        # result will be (bsize, 1, feat_dim)
+        # squeeze the result to obtain (bsize, feat_dim)
+        z = attn_weights_norm.unsqueeze(1).bmm(X).squeeze(1)
+        
+        # returns (bsize, feat_dim), (bsize, seqlen)
+        return z, attn_weights_norm
+
 class Categ_CrisCasTransformer(nn.Module):
 
-    def __init__(self, input_size=64, num_nucleotides=4, seq_length=20, 
-                num_attn_heads=8, mlp_embed_factor=2, 
-                nonlin_func=nn.ReLU(), pdropout=0.3, num_transformer_units=12, num_classes=2):
+    def __init__(self, input_size=64, num_nucleotides=4, 
+                 seq_length=20, num_attn_heads=8, 
+                 mlp_embed_factor=2, nonlin_func=nn.ReLU(), 
+                 pdropout=0.3, num_transformer_units=12, 
+                 pooling_mode='attn', num_classes=2):
         
         super(Categ_CrisCasTransformer, self).__init__()
         
@@ -141,10 +191,18 @@ class Categ_CrisCasTransformer(nn.Module):
 
         self.nucleopos_embedder = NucleoPosEmbedder(num_nucleotides, seq_length, embed_size)
         
-        trfunit_layers = [TransformerUnit(input_size, num_attn_heads, mlp_embed_factor, nonlin_func, pdropout) for i in range(num_transformer_units)]
-        self.trfunit_pipeline = nn.Sequential(*trfunit_layers)
+        trfunit_layers = [TransformerUnit(input_size, num_attn_heads, mlp_embed_factor, nonlin_func, pdropout) 
+                          for i in range(num_transformer_units)]
+        # self.trfunit_layers = trfunit_layers
+        self.trfunit_pipeline = nn.ModuleList(trfunit_layers)
+        # self.trfunit_pipeline = nn.Sequential(*trfunit_layers)
 
         self.Wy = nn.Linear(embed_size, num_classes)
+        self.pooling_mode = pooling_mode
+        if pooling_mode == 'attn':
+            self.pooling = FeatureEmbAttention(input_size)
+        elif pooling_mode == 'mean':
+            self.pooling = torch.mean
         # perform log softmax on the feature dimension
         self.log_softmax = nn.LogSoftmax(dim=-1)
         
@@ -157,14 +215,23 @@ class Categ_CrisCasTransformer(nn.Module):
         # (batch, seqlen, embedding dim)
         X_embpos = self.nucleopos_embedder(X)
         # z is tensor of size (batch,  seqlen, embedding dim)
-        z = self.trfunit_pipeline(X_embpos)
-        
-        # TODO: add global attention layer or other pooling strategy
-        # we currently perform mean pooling 
-        # pool across similarity type vectors
-        # Note: z.mean(dim=1) will change shape of z to become (batch, embedding dim)
+        # z = self.trfunit_pipeline(X_embpos)
+        attn_mlayer_mhead_dict = {}
+        xinput = X_embpos
+        for count, trfunit in enumerate(self.trfunit_pipeline):
+            z, attn_mhead_dict = trfunit(xinput)
+            attn_mlayer_mhead_dict[f'l{count}'] = attn_mhead_dict
+            xinput = z
+
+         # pool across seqlen vectors
+
+        if self.pooling_mode == 'attn':
+            z, fattn_w_norm = self.pooling(z)
+        # Note: z.mean(dim=1) or self.pooling(z, dim=1) will change shape of z to become (batch, embedding dim)
         # we can keep dimension by running z.mean(dim=1, keepdim=True) to have (batch, 1, embedding dim)
+        elif self.pooling_mode == 'mean':
+            z = self.pooling(z, dim=1)
+            fattn_w_norm = None
+        y = self.Wy(z) 
         
-        y = self.Wy(z.mean(dim=1)) 
-        
-        return self.log_softmax(y)
+        return self.log_softmax(y), fattn_w_norm, attn_mlayer_mhead_dict

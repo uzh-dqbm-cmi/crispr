@@ -35,9 +35,15 @@ def get_performance_results(target_dir, num_runs, dsettype):
     all_perf = {}
     num_metrics = 3 # number of metrics to focus on
     perf_dict = [{} for i in range(num_metrics)]  # track auc, accuracy, macro_f1
+    if dsettype == 'train':
+        prefix = 'train_val'
+    else:
+        prefix = dsettype
+    metric_names = ('auc', 'accuracy', 'macro_f1')
     for run_num in range(num_runs):
 
         run_dir = os.path.join(target_dir,
+                               '{}'.format(prefix),
                                'run_{}'.format(run_num))
 
         score_file = os.path.join(run_dir, 'score_{}.pkl'.format(dsettype))
@@ -47,28 +53,24 @@ def get_performance_results(target_dir, num_runs, dsettype):
             perf_dict[0]['run{}'.format(run_num)] = mscore.auc
             perf_dict[1]['run{}'.format(run_num)] = mscore.accuracy
             perf_dict[2]['run{}'.format(run_num)] = mscore.macro_f1
-    perf_df = []
+    perf_df_lst = []
     for i in range(num_metrics):
         all_perf = perf_dict[i]
-        all_perf_df = pd.DataFrame(all_perf)
+        all_perf_df = pd.DataFrame(all_perf, index=[metric_names[i]])
         median = all_perf_df.median(axis=1)
         mean = all_perf_df.mean(axis=1)
         stddev = all_perf_df.std(axis=1)
         all_perf_df['mean'] = mean
         all_perf_df['median'] = median
         all_perf_df['stddev'] = stddev
-        perf_df.append(all_perf_df.sort_values('mean', ascending=False))
-    return perf_df
+        perf_df_lst.append(all_perf_df.sort_values('mean', ascending=False))
+    
+    return pd.concat(perf_df_lst, axis=0)
 
 
 def build_performance_dfs(target_dir, num_runs, dsettype):
-    auc_df = pd.DataFrame()
-    accuracy_df = pd.DataFrame()
-    macro_f1_df = pd.DataFrame()
     target_dir = create_directory(target_dir)
-    print(target_dir)
-    s_auc, s_accuracy, s_macro_f1 = get_performance_results(target_dir, num_runs, dsettype)
-    return s_auc, s_accuracy, s_macro_f1
+    return get_performance_results(target_dir, num_runs, dsettype)
 
 
 class ReaderWriter(object):
@@ -269,3 +271,4 @@ def plot_loss(epoch_loss_avgbatch, epoch_loss_avgsamples, wrk_dir):
 def delete_directory(directory):
     if(os.path.isdir(directory)):
         shutil.rmtree(directory)
+
