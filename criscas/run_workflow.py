@@ -146,7 +146,7 @@ def run_categTrf(data_partition, dsettypes, config, options, wrk_dir, state_dict
 
     if('train' in data_loaders):
         weight_decay = options.get('weight_decay', 1e-3)
-        optimizer = torch.optim.Adam(models_param, weight_decay=weight_decay, lr=1e-3)
+        optimizer = torch.optim.RMSprop(models_param, weight_decay=weight_decay, lr=1e-4)
         # see paper Cyclical Learning rates for Training Neural Networks for parameters' choice
         # `https://arxive.org/pdf/1506.01186.pdf`
         # pytorch version >1.1, scheduler should be called after optimizer
@@ -156,7 +156,7 @@ def run_categTrf(data_partition, dsettypes, config, options, wrk_dir, state_dict
         base_lr = 3e-4
         max_lr = 5*base_lr  # 3-5 times base_lr
         cyc_scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr, max_lr, step_size_up=c_step_size,
-                                                          mode='triangular', cycle_momentum=False)
+                                                          mode='triangular', cycle_momentum=True)
 
     if ('validation' in data_loaders):
         m_state_dict_dir = create_directory(os.path.join(wrk_dir, 'model_statedict'))
@@ -286,14 +286,14 @@ def generate_hyperparam_space(model_name):
     if(model_name == 'Transformer'):
         # TODO: add the possible options for transformer model
         embed_dim = [16,32,64,128]
-        num_attn_heads = [2,4,8]
-        num_transformer_units = [2,4,6]
+        num_attn_heads = [4,6,8,12]
+        num_transformer_units = [2,4,6,8]
         p_dropout = [0.1, 0.3, 0.5]
         nonlin_func = [nn.ReLU, nn.ELU]
         mlp_embed_factor = [2]
-        l2_reg = [1e-4, 1e-3, 1e-2]
+        l2_reg = [1e-4, 1e-3, 0.]
         batch_size = [200, 400, 600]
-        num_epochs = [50]
+        num_epochs = [30]
         opt_lst = [embed_dim, num_attn_heads, 
                    num_transformer_units, p_dropout,
                    nonlin_func, mlp_embed_factor,
