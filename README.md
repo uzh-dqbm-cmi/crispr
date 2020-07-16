@@ -38,11 +38,25 @@ The easiest way to install and manage Python packages on various OS platforms is
     ```
 * After that we are ready to use the package with the trained `BE-DICT` models for base editing prediction.
 
-#### Demo Jupyter notebook
+### Demo Jupyter notebook
 
 A jupyter notebook that illustrates the use of `BE-DICT` model is found under `demo` folder in this repo (`BEDICT_model_demonstration.ipynb`).
 
-A markdown version of the notebook is available under name `BEDICT_model_demonstration.md` and pasted under for convinence 🤓 
+A markdown version of the notebook is available under name `BEDICT_model_demonstration.md` and pasted under for convinence 🤓.
+
+### OS & Packages' version
+
+The models were trained, tested and ran on Linux machine `Ubuntu 18.04.3 LTS` with one `Tesla P4 GPU` support.
+The version of the `required` packages used in `setup.py` were:
+* `numpy` -> `'1.18.1'`
+* `scipy` -> `'1.4.1'`
+* `pandas` -> `'1.0.1'`
+* `scikit-learn` -> `'0.22.1'`
+* `torch` -> `'1.4.0'`
+  * `cudatoolkit=10.1`
+* `matplotlib` -> `'3.1.3'`
+* `seaborn` -> `'0.10.0'`
+
 
 ### BE-DICT model running demo
 
