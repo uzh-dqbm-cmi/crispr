@@ -1,7 +1,7 @@
 *.p
 *.pickle
 
-.DS_Store
+*.DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -51,5 +51,14 @@ venv.bak/
 # orisenbazuru
 notebooks
 data
+new_data
+sample_data
 ABEmax
 BE4
+ABE8e
+AID
+figures
+figures_exp_validation
+figures_published_validation
+corrstats.py
+validation

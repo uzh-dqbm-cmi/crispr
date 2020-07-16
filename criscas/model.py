@@ -7,7 +7,7 @@ class SH_SelfAttention(nn.Module):
     """
     def __init__(self, input_size):
         
-        super(SH_SelfAttention, self).__init__()
+        super().__init__()
         # define query, key and value transformation matrices
         # usually input_size is equal to embed_size
         self.embed_size = input_size
@@ -45,7 +45,7 @@ class MH_SelfAttention(nn.Module):
     """
     def __init__(self, input_size, num_attn_heads):
         
-        super(MH_SelfAttention, self).__init__()
+        super().__init__()
         
         layers = [SH_SelfAttention(input_size) for i in range(num_attn_heads)]
         
@@ -78,13 +78,14 @@ class TransformerUnit(nn.Module):
     
     def __init__(self, input_size, num_attn_heads, mlp_embed_factor, nonlin_func, pdropout):
         
-        super(TransformerUnit, self).__init__()
+        super().__init__()
         
         embed_size = input_size
         self.multihead_attn = MH_SelfAttention(input_size, num_attn_heads)
         
         self.layernorm_1 = nn.LayerNorm(embed_size)
-        
+
+        # also known as position wise feed forward neural network
         self.MLP = nn.Sequential(
             nn.Linear(embed_size, embed_size*mlp_embed_factor),
             nonlin_func,
@@ -113,13 +114,37 @@ class TransformerUnit(nn.Module):
         return z, attn_mhead_dict
 
 """
-TODO: implement position encoder based on cosine and sine approach proposed 
+      implement position encoder based on cosine and sine approach proposed 
       by original Transformers paper ('Attention is all what you need')
 """
+class NucleoPosEncoding(nn.Module):
+    def __init__(self, num_nucleotides, seq_len, embed_dim, pdropout=0.1):
+        super().__init__()
+        self.nucleo_emb = nn.Embedding(num_nucleotides, embed_dim)
+        self.dropout = nn.Dropout(p=pdropout)
+        # positional encoding matrix
+        base_pow = 10000
+        PE_matrix = torch.zeros((1, seq_len, embed_dim))
+        i_num = torch.arange(0., seq_len).reshape(-1, 1) # i iterates over sequence length (i.e. sequence items)
+        j_denom = torch.pow(base_pow, torch.arange(0., embed_dim, 2.) / embed_dim) # j iterates over embedding dimension
+        PE_matrix[:, :, 0::2] = torch.sin(i_num/j_denom)
+        PE_matrix[:, :, 1::2] = torch.cos(i_num/j_denom)
+        self.register_buffer('PE_matrix', PE_matrix)
         
+        
+    def forward(self, X):
+        """
+        Args:
+            X: tensor, int64,  (batch, sequence length)
+        """
+        X_emb = self.nucleo_emb(X)
+        # (batch, sequence length, embedding dim)
+        X_embpos = X_emb + self.PE_matrix
+        return self.dropout(X_embpos)
+
 class NucleoPosEmbedder(nn.Module):
     def __init__(self, num_nucleotides, seq_length, embedding_dim):
-        super(NucleoPosEmbedder, self).__init__()
+        super().__init__()
         self.nucleo_emb = nn.Embedding(num_nucleotides, embedding_dim)
         self.pos_emb = nn.Embedding(seq_length, embedding_dim)
 
@@ -137,15 +162,53 @@ class NucleoPosEmbedder(nn.Module):
         X_embpos = X_emb + positions_emb
         return X_embpos
 
+class PerBaseFeatureEmbAttention(nn.Module):
+    """ Per base feature attention module
+    """
+    def __init__(self, input_dim, seq_len):
+        
+        super().__init__()
+        # define query, key and value transformation matrices
+        # usually input_size is equal to embed_size
+        self.embed_size = input_dim
+        self.Q = nn.Parameter(torch.randn((seq_len, input_dim), dtype=torch.float32), requires_grad=True)
+        self.softmax = nn.Softmax(dim=-1) # normalized across feature dimension
+    
+    def forward(self, X):
+        """
+        Args:
+            X: tensor, (batch, sequence length, input_size)
+        """
+        bsize, seqlen, featdim = X.shape
+        X_q = self.Q[None, :, :].expand(bsize, seqlen, featdim) # queries
+        X_k = X
+        X_v = X
+        # scaled queries and keys by forth root 
+        X_q_scaled = X_q / (self.embed_size ** (1/4))
+        X_k_scaled = X_k / (self.embed_size ** (1/4))
+        # print(X_q_scaled.shape)
+        # print(X_k_scaled.shape)
+        
+        attn_w = torch.bmm(X_q_scaled, X_k_scaled.transpose(1,2))
+        # attn_w = X_q_scaled.matmul(X_k_scaled.transpose(1,0))
+        # (batch, sequence length, sequence length)
+        attn_w_normalized = self.softmax(attn_w)
+        # print('attn_w_normalized.shape', attn_w_normalized.shape)
+        
+        # reweighted value vectors
+        z = torch.bmm(attn_w_normalized, X_v)
+        # print('z.shape', z.shape)
+        
+        return z, attn_w_normalized
+
 class FeatureEmbAttention(nn.Module):
     def __init__(self, input_dim):
         '''
         Args:
-            attn_method: string, {'additive', 'dot', 'dot_scaled'}
             input_dim: int, size of the input vector (i.e. feature vector)
         '''
 
-        super(FeatureEmbAttention, self).__init__()
+        super().__init__()
         self.input_dim = input_dim
         # use this as query vector against the transformer outputs
         self.queryv = nn.Parameter(torch.randn(input_dim, dtype=torch.float32), requires_grad=True)
@@ -183,30 +246,45 @@ class Categ_CrisCasTransformer(nn.Module):
                  seq_length=20, num_attn_heads=8, 
                  mlp_embed_factor=2, nonlin_func=nn.ReLU(), 
                  pdropout=0.3, num_transformer_units=12, 
-                 pooling_mode='attn', num_classes=2):
+                 pooling_mode='attn', num_classes=2, per_base=False):
         
-        super(Categ_CrisCasTransformer, self).__init__()
+        super().__init__()
         
         embed_size = input_size
 
         self.nucleopos_embedder = NucleoPosEmbedder(num_nucleotides, seq_length, embed_size)
+        # self.nucleopos_embedder = NucleoPosEncoding(num_nucleotides, seq_length, embed_size)
         
         trfunit_layers = [TransformerUnit(input_size, num_attn_heads, mlp_embed_factor, nonlin_func, pdropout) 
                           for i in range(num_transformer_units)]
         # self.trfunit_layers = trfunit_layers
         self.trfunit_pipeline = nn.ModuleList(trfunit_layers)
         # self.trfunit_pipeline = nn.Sequential(*trfunit_layers)
-
+        self.per_base = per_base
         self.Wy = nn.Linear(embed_size, num_classes)
-        self.pooling_mode = pooling_mode
-        if pooling_mode == 'attn':
-            self.pooling = FeatureEmbAttention(input_size)
-        elif pooling_mode == 'mean':
-            self.pooling = torch.mean
+        if not per_base:
+            self.pooling_mode = pooling_mode
+            if pooling_mode == 'attn':
+                self.pooling = FeatureEmbAttention(input_size)
+            elif pooling_mode == 'mean':
+                self.pooling = torch.mean
+        else:
+            self.pooling_mode = pooling_mode
+            if pooling_mode == 'attn':
+                self.pooling = PerBaseFeatureEmbAttention(input_size, seq_length)
         # perform log softmax on the feature dimension
         self.log_softmax = nn.LogSoftmax(dim=-1)
+        self._init_params_()
         
-    
+    def _init_params_(self):
+        for p_name, p in self.named_parameters():
+            param_dim = p.dim()
+            if param_dim > 1: # weight matrices
+                nn.init.xavier_uniform_(p)
+            elif param_dim == 1: # bias parameters
+                if p_name.endswith('bias'):
+                    nn.init.uniform_(p, a=-1.0, b=1.0)
+
     def forward(self, X):
         """
         Args:
@@ -224,14 +302,19 @@ class Categ_CrisCasTransformer(nn.Module):
             xinput = z
 
          # pool across seqlen vectors
-
-        if self.pooling_mode == 'attn':
-            z, fattn_w_norm = self.pooling(z)
-        # Note: z.mean(dim=1) or self.pooling(z, dim=1) will change shape of z to become (batch, embedding dim)
-        # we can keep dimension by running z.mean(dim=1, keepdim=True) to have (batch, 1, embedding dim)
-        elif self.pooling_mode == 'mean':
-            z = self.pooling(z, dim=1)
-            fattn_w_norm = None
+        if not self.per_base:
+            if self.pooling_mode == 'attn':
+                z, fattn_w_norm = self.pooling(z)
+            # Note: z.mean(dim=1) or self.pooling(z, dim=1) will change shape of z to become (batch, embedding dim)
+            # we can keep dimension by running z.mean(dim=1, keepdim=True) to have (batch, 1, embedding dim)
+            elif self.pooling_mode == 'mean':
+                z = self.pooling(z, dim=1)
+                fattn_w_norm = None
+        else:
+            if self.pooling_mode == 'attn':
+                z, fattn_w_norm = self.pooling(z)
+        
         y = self.Wy(z) 
         
         return self.log_softmax(y), fattn_w_norm, attn_mlayer_mhead_dict
+

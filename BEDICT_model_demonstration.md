@@ -1,51 +1,3 @@
-# CRISPR
-
-Contains source code for running `BE-DICT` model. For more info, see our [preprint](https://www.biorxiv.org/content/10.1101/2020.07.05.186544v1) on biorxiv.
-
-### Installation
-
-* `git clone` the repo and `cd` into it.
-* Run `pip install -e .` to install the repo's python package.
-
-### Using Anaconda (optional)
-
-The easiest way to install and manage Python packages on various OS platforms is through [Anaconda](https://docs.anaconda.com/anaconda/install/). Once installed, any package (even if not available on Anaconda channel) could be installed using pip. 
-
-#### On Mac
-
-* Install [Anaconda](https://docs.anaconda.com/anaconda/install/).
-* `git clone` the repo and `cd` into it.
-* Start a terminal and run
-
-    ```shell
-    # create an environment
-    conda create --name bedict_crispr
-    # activate the created environment (bedict_crispr)
-    conda activate bedict_crispr
-    # install anaconda
-    conda install -c anaconda python=3.6 
-    # update all installed packages
-    conda update -y --all
-    # install pytorch 
-    # Note cudatoolkit version depends on the version installed on your device
-    # if there is no GPU run this command
-    # conda install pytorch torchvision -c pytorch
-    # see https://pytorch.org/
-    conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
-    conda clean -ya
-    # install criscas package (this package)
-    pip install -e .
-    ```
-* After that we are ready to use the package with the trained `BE-DICT` models for base editing prediction.
-
-#### Demo Jupyter notebook
-
-A jupyter notebook that illustrates the use of `BE-DICT` model is found under `demo` folder in this repo (`BEDICT_model_demonstration.ipynb`).
-
-A markdown version of the notebook is available under name `BEDICT_model_demonstration.md` and pasted under for convinence 🤓 
-
-### BE-DICT model running demo
-
 ```python
 %load_ext autoreload
 %autoreload 2
@@ -1536,7 +1488,3 @@ Similarly we can change the other arguments such as `pred_option` `apply_attnsco
 ```python
 
 ```
-
-
-
-

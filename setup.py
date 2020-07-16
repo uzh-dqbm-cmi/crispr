@@ -12,6 +12,7 @@ setup(name='crisprcas',
             'scipy',
             'scikit-learn',
             'torch',
-            'matplotlib'
+            'matplotlib',
+            'seaborn'
       ],
       zip_safe=False)
