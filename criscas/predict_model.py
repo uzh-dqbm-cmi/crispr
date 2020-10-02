@@ -191,7 +191,7 @@ class BEDICT_CriscasModel:
 
         return gr_df.iloc[t_indx]
 
-    def select_prediction(self,pred_w_attn_runs_df, option):
+    def select_prediction(self, pred_w_attn_runs_df, option):
         assert option in {'mean', 'median', 'max', 'min'}, "selection option should be in {mean, median, min, max}!"
         if option == 'mean':
             pred_w_attn_df = pred_w_attn_runs_df.groupby(['id', 'base_pos', 'model_name']).mean().reset_index()
@@ -256,16 +256,25 @@ class BEDICT_CriscasModel:
                           right_on=['ID'])
         check_na(res_df)
     
-        if seqid_pos_map:     
+        if seqid_pos_map:
             for seqid, t_pos in seqid_pos_map.items():
-                for pos in t_pos:
-                    cond = (res_df['id'] == seqid) & (res_df['base_pos'] == (pos-1))
+                print('seq_id:', seqid)
+                if t_pos: # if list of positions are supplied
+                    # subtract 1 since base position indexing is from 0-19
+                    t_pos_upd = [bpos-1 for bpos in t_pos]
+                    cond = (res_df['id'] == seqid) & (res_df['base_pos'].isin(t_pos_upd))
                     t_df = res_df.loc[cond].copy()
-                    print(f'highlighting seqid:{seqid}, pos:{pos}') 
                     for rname, row in t_df.iterrows():
-                        self._highlight_attn_scores(row, pred_option, self.base_editor, cmap='YlOrRd', fig_dir=fig_dir)
+                        print(f"highlighting seqid:{row['id']}, pos:{row['base_pos']}") 
+                        self._highlight_attn_scores(row, pred_option, self.base_editor, cmap='YlOrRd', fig_dir=fig_dir) 
+                else:
+                    cond = res_df['id'] == seqid
+                    t_df = res_df.loc[cond]
+                    for rname, row in t_df.iterrows():
+                        print(f"highlighting seqid:{row['id']}, pos:{row['base_pos']+1}") 
+                        self._highlight_attn_scores(row, pred_option, self.base_editor, cmap='YlOrRd', fig_dir=fig_dir) 
         else:
             for gr_name, gr_df in res_df.groupby(['id', 'base_pos']):
-                print(f'highlighting seqid: {gr_name[0]}, pos: {gr_name[1]+1}')
+                print(f"highlighting seqid: {gr_name[0]}, pos: {gr_name[1]+1}")
                 for rname, row in gr_df.iterrows():
                     self._highlight_attn_scores(row, pred_option, self.base_editor, cmap='YlOrRd', fig_dir=fig_dir)
