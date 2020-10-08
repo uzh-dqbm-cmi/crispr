@@ -17,6 +17,6 @@ setup(name='crisprcas',
             'flask',
             'requests',
             'flask_cors',
-            'pdf2image'
+            'PyPDF2'
       ],
       zip_safe=False)
