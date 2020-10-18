@@ -37,11 +37,9 @@ def crispr():
         selectedPredictionType = request.form[ "selectedPredictionType" ]
         selectedSequences = request.form[ "selectedSequences" ].split(',')
         selectedAction = request.form["selectedAction"]
-        print( selectedBaseEditor, selectedPredictionType, selectedSequences, selectedAction )
+        randomFolderName = request.form["sessionHash"]
 
         if not file.filename == "":
-
-            randomFolderName = str( int( random() * 100000 ) )
 
             base_dir = os.path.abspath(os.path.join(
                 os.getcwd(),
@@ -66,31 +64,66 @@ def crispr():
             pred_option = selectedPredictionType
             pred_w_attn_df = bedict.select_prediction(pred_w_attn_runs_df, pred_option)
 
-            pred_w_attn_runs_df.to_csv(os.path.join(csv_dir, f'predictions_allruns.csv'))
+            if selectedAction == "download":
+                pred_w_attn_runs_df.to_csv(os.path.join(csv_dir, f'predictions_allruns.csv'))
 
-            pred_w_attn_df.to_csv(os.path.join(csv_dir, f'predictions_predoption_{pred_option}.csv'))
+                pred_w_attn_df.to_csv(os.path.join(csv_dir, f'predictions_predoption_{pred_option}.csv'))
 
-            seqid_pos_map = {}
-            for sequence in selectedSequences:
-                seqid_pos_map[ sequence ] = []
+                shutil.make_archive(
+                    os.path.join(
+                        base_dir,
+                        'predictions_' + selectedBaseEditor + '_' + selectedPredictionType
+                    ),
+                    'zip',
+                    os.path.join(
+                        base_dir,
+                        'predictions'
+                    )
+                )
 
-            pred_option = selectedPredictionType
-            apply_attn_filter = False
-            fig_dir = create_directory( os.path.join( base_dir, 'fig_dir') )
+                # @after_this_request
+                # def remove_file(response):
+                #     shutil.rmtree( base_dir )
+                #     return response
 
-
-
-            bedict.highlight_attn_per_seq(pred_w_attn_runs_df,
-                                          proc_df,
-                                          seqid_pos_map=seqid_pos_map,
-                                          pred_option=pred_option,
-                                          apply_attnscore_filter=apply_attn_filter,
-                                          fig_dir=create_directory(os.path.join(fig_dir, pred_option)))
-
-
+                return send_file(
+                    os.path.join(
+                        base_dir,
+                        'predictions_' + selectedBaseEditor + '_' + selectedPredictionType + '.zip'
+                    ),
+                    mimetype='application/pdf'
+                )
 
 
             if selectedAction == "plot":
+
+                try:
+                    shutil.rmtree(
+                        os.path.join(
+                            base_dir,
+                            'fig_dir',
+                        selectedPredictionType)
+                    )
+
+                    create_directory(os.path.join( base_dir, 'fig_dir', selectedPredictionType ) )
+
+                except:
+                    print( 'not printed yet' )
+
+                seqid_pos_map = {}
+                for sequence in selectedSequences:
+                    seqid_pos_map[sequence] = []
+
+                pred_option = selectedPredictionType
+                apply_attn_filter = False
+                fig_dir = create_directory(os.path.join(base_dir, 'fig_dir'))
+
+                bedict.highlight_attn_per_seq(pred_w_attn_runs_df,
+                                              proc_df,
+                                              seqid_pos_map=seqid_pos_map,
+                                              pred_option=pred_option,
+                                              apply_attnscore_filter=apply_attn_filter,
+                                              fig_dir=create_directory(os.path.join(fig_dir, pred_option)))
 
                 merger = PdfFileMerger()
 
@@ -105,8 +138,6 @@ def crispr():
                             pdfName)
                     )
 
-                print(len(pdfs))
-
                 for pdf in pdfs:
                     merger.append(pdf)
 
@@ -120,10 +151,10 @@ def crispr():
 
                 merger.close()
 
-                @after_this_request
-                def remove_file(response):
-                    shutil.rmtree( base_dir )
-                    return response
+                # @after_this_request
+                # def remove_file(response):
+                #     shutil.rmtree( base_dir )
+                #     return response
 
                 return send_file(
                     os.path.join(
@@ -131,33 +162,6 @@ def crispr():
                         'fig_dir',
                         selectedPredictionType,
                         'merged.pdf'),
-                    mimetype='application/pdf'
-                )
-
-            if selectedAction == "download":
-
-                shutil.make_archive(
-                    os.path.join(
-                        base_dir,
-                        'predictions_' + selectedBaseEditor + '_' + selectedPredictionType
-                    ),
-                    'zip',
-                    os.path.join(
-                        base_dir,
-                        'predictions'
-                    )
-                )
-
-                @after_this_request
-                def remove_file(response):
-                    shutil.rmtree( base_dir )
-                    return response
-
-                return send_file(
-                    os.path.join(
-                        base_dir,
-                        'predictions_' + selectedBaseEditor + '_' + selectedPredictionType + '.zip'
-                    ),
                     mimetype='application/pdf'
                 )
 
