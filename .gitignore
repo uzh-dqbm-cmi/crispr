@@ -17,6 +17,8 @@ build/
 develop-eggs/
 dist/
 downloads/
+microservice/temp_files
+microservice/crisprcas.egg-info
 eggs/
 .eggs/
 lib/
@@ -61,3 +63,4 @@ figures_exp_validation
 figures_published_validation
 corrstats.py
 validation
+temp_files
