@@ -4,7 +4,7 @@ setup(name='crisprcas',
       version='0.0.1',
       description='',
       url='https://github.com/CMI-UZH/crispr',
-      packages=['criscas'],
+      packages=['criscas','haplotype'],
       python_requires='>=3.6.0',
       install_requires=[
             'numpy',
@@ -13,6 +13,8 @@ setup(name='crisprcas',
             'scikit-learn',
             'torch',
             'matplotlib',
-            'seaborn'
+            'seaborn',
+            'prettytable',
+            'tqdm'
       ],
       zip_safe=False)

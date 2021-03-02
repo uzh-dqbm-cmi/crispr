@@ -61,7 +61,7 @@ class BEDICT_CriscasModel:
     def _load_model_statedict_(self, model, run_num):
         print('--- loading trained model ---')
         base_dir = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-        run_pth = os.path.join(base_dir, 'trained_models', self.base_editor, 'train_val', f'run_{run_num}')
+        run_pth = os.path.join(base_dir, 'trained_models', 'perbase', self.base_editor, 'train_val', f'run_{run_num}')
         print(run_pth)
         device = self.device
 
@@ -147,9 +147,11 @@ class BEDICT_CriscasModel:
 
 
     def predict_from_dataframe(self, df, batch_size=500):
+        # TODO: add target run num for specific editor
+
         if self.base_editor in {'ABEmax', 'ABE8e'}:
             target_base = 'A'
-        elif self.base_editor in {'BE4', 'AID'}:
+        elif self.base_editor in {'BE4max', 'Target-AID'}:
             target_base = 'C'
 
         proc_df = self._process_df(df, target_base)

@@ -15,7 +15,9 @@ class CrisCASDataTensor(Dataset):
         self.num_samples = self.X_feat.size(0)  # int, number of sequences
 
     def __getitem__(self, indx):
-
+        if self.y_score is None:
+            return(self.X_feat[indx], indx, self.indx_seqid_map[indx])
+            
         return(self.X_feat[indx], self.y_score[indx], self.y_categ[indx], indx, self.indx_seqid_map[indx])
 
     def __len__(self):
