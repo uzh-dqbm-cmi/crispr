@@ -240,6 +240,7 @@ class FeatureEmbAttention(nn.Module):
         # returns (bsize, feat_dim), (bsize, seqlen)
         return z, attn_weights_norm
 
+
 class Categ_CrisCasTransformer(nn.Module):
 
     def __init__(self, input_size=64, num_nucleotides=4, 
@@ -261,17 +262,22 @@ class Categ_CrisCasTransformer(nn.Module):
         self.trfunit_pipeline = nn.ModuleList(trfunit_layers)
         # self.trfunit_pipeline = nn.Sequential(*trfunit_layers)
         self.per_base = per_base
-        self.Wy = nn.Linear(embed_size, num_classes)
+        
         if not per_base:
             self.pooling_mode = pooling_mode
             if pooling_mode == 'attn':
                 self.pooling = FeatureEmbAttention(input_size)
             elif pooling_mode == 'mean':
                 self.pooling = torch.mean
+            self.Wy = nn.Linear(embed_size, num_classes, bias=True)
+
         else:
             self.pooling_mode = pooling_mode
             if pooling_mode == 'attn':
                 self.pooling = PerBaseFeatureEmbAttention(input_size, seq_length)
+            self.bias = nn.Parameter(torch.randn((seq_length, num_classes), dtype=torch.float32), requires_grad=True)
+            self.Wy = nn.Linear(embed_size, num_classes, bias=False)
+
         # perform log softmax on the feature dimension
         self.log_softmax = nn.LogSoftmax(dim=-1)
         self._init_params_()
@@ -284,6 +290,7 @@ class Categ_CrisCasTransformer(nn.Module):
             elif param_dim == 1: # bias parameters
                 if p_name.endswith('bias'):
                     nn.init.uniform_(p, a=-1.0, b=1.0)
+                    # nn.init.xavier_uniform_(p)
 
     def forward(self, X):
         """
@@ -310,11 +317,10 @@ class Categ_CrisCasTransformer(nn.Module):
             elif self.pooling_mode == 'mean':
                 z = self.pooling(z, dim=1)
                 fattn_w_norm = None
+            y = self.Wy(z)
         else:
             if self.pooling_mode == 'attn':
                 z, fattn_w_norm = self.pooling(z)
-        
-        y = self.Wy(z) 
+            y = self.Wy(z) + self.bias
         
         return self.log_softmax(y), fattn_w_norm, attn_mlayer_mhead_dict
-
