@@ -50,16 +50,16 @@ We provide two `notebooks` that illustrate the use of BE-DICT (`perbase`) and (`
 
 The models were trained, tested and ran on Linux machine `Ubuntu 18.04.3 LTS` with one `Tesla P4 GPU` support.
 The version of the `required` packages used in `setup.py` were:
-* `numpy` $\ge$  `'1.18.1'`
-* `scipy` $\ge$ `'1.4.1'`
-* `pandas` $\ge$ `'1.0.1'`
-* `scikit-learn` $\ge$`'0.22.1'`
-* `torch` $\ge$`'1.7.1'`
+* `numpy` &gt;=  `'1.18.1'`
+* `scipy` &gt;= `'1.4.1'`
+* `pandas` &gt;= `'1.0.1'`
+* `scikit-learn` &gt;= `'0.22.1'`
+* `torch` &gt;= `'1.7.1'`
   * `cudatoolkit=10.1`
-* `matplotlib` $\ge$ `'3.1.3'`
-* `seaborn` $\ge$ `'0.10.0'`
-* `prettytable` $\ge$ `'2.0.0'`
-* `tqdm` $\ge$ `'4.56.2'`
+* `matplotlib` &gt;= `'3.1.3'`
+* `seaborn` &gt;= `'0.10.0'`
+* `prettytable` &gt;= `'2.0.0'`
+* `tqdm` &gt;= `'4.56.2'`
 
 ### Webapp 🕸️
 
@@ -69,13 +69,13 @@ A running instance supporting `BE-DICT (perbase)` model can be accessed at this 
 
 If you find our work is useful in your research, please cite the following paper:
 
-> @article {Marquart2020.07.05.186544,
-	author = {Marquart, Kim F. and Allam, Ahmed and Janjuha, Sharan and Sintsova, Anna and Villiger, Lukas and Frey, Nina and Krauthammer, Michael and Schwank, Gerald},
-	title = {Predicting base editing outcomes with an attention-based deep learning algorithm trained on high-throughput target library screens},
-	elocation-id = {2020.07.05.186544},
-	year = {2020},
-	doi = {10.1101/2020.07.05.186544},
-	URL = {https://www.biorxiv.org/content/early/2020/07/05/2020.07.05.186544},
-	eprint = {https://www.biorxiv.org/content/early/2020/07/05/2020.07.05.186544.full.pdf},
-	journal = {bioRxiv}
+> @article {Marquart2020.07.05.186544,  
+	author = {Marquart, Kim F. and Allam, Ahmed and Janjuha, Sharan and Sintsova, Anna and Villiger, Lukas and Frey, Nina and Krauthammer, Michael and Schwank, Gerald},  
+	title = {Predicting base editing outcomes with an attention-based deep learning algorithm trained on high-throughput target library screens},  
+	elocation-id = {2020.07.05.186544},  
+	year = {2020},  
+	doi = {10.1101/2020.07.05.186544},  
+	URL = {https://www.biorxiv.org/content/early/2020/07/05/2020.07.05.186544},  
+	eprint = {https://www.biorxiv.org/content/early/2020/07/05/2020.07.05.186544.full.pdf},  
+	journal = {bioRxiv}  
 }
