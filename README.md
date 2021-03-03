@@ -42,9 +42,9 @@ The easiest way to install and manage Python packages on various OS platforms is
 
 ### BE-DICT model running demo 🏃‍♀️
 
-We provide two `notebooks` that illustrate the use of BE-DICT (`perbase`) and (`bystander`) models:
-   - [BE-DICT `perbase` model](demo/BEDICT_model_demonstration.ipynb)
-   - [BE-DICT `bystander` model](demo/BEDICT_haplotype_model_demoseqs.ipynb)
+We provide two `notebooks` that illustrate the use of BE-DICT (`perbase`) and (`bystander`) models under `demo` folder:
+   - [BE-DICT `perbase` model](https://nbviewer.jupyter.org/github/uzh-dqbm-cmi/crispr/blob/master/demo/BEDICT_model_demonstration.ipynb)
+   - [BE-DICT `bystander` model](https://nbviewer.jupyter.org/github/uzh-dqbm-cmi/crispr/blob/master/demo/BEDICT_haplotype_model_demoseqs.ipynb)
 
 ### OS & Packages' version
 
