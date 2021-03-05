@@ -1,8 +1,12 @@
-# CRISPR
+# CRISPRCAS
 
 ![BE-DICT logo](bedict_logo.png)
 
-Repository containing source code for running `BE-DICT` model. For more info, see our [preprint](https://www.biorxiv.org/content/10.1101/2020.07.05.186544v1) on biorxiv.
+Repository containing `python` packages for running `BE-DICT` models. There are two packages: 
+   - `criscas` for instantiating `per-base` model and 
+   - `haplotype` for instantiating `bystander` model. 
+
+For more info about this research, see our [preprint](https://www.biorxiv.org/content/10.1101/2020.07.05.186544v1) on biorxiv.
 
 ### Installation
 
