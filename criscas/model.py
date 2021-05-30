@@ -62,16 +62,18 @@ class MH_SelfAttention(nn.Module):
         """
         
         out = []
-        attn_dict = {}
-        for count, SH_layer in enumerate(self.multihead_pipeline):
+        bsize, num_positions, inp_dim = X.shape
+        attn_tensor = X.new_zeros((bsize, num_positions, num_positions))
+        for SH_layer in self.multihead_pipeline:
             z, attn_w = SH_layer(X)
             out.append(z)
-            attn_dict[f'h{count}'] = attn_w
+            attn_tensor += attn_w
         # concat on the feature dimension
         out = torch.cat(out, -1) 
-        
+        attn_tensor = attn_tensor/len(self.multihead_pipeline)
+
         # return a unified vector mapping of the different self-attention blocks
-        return self.Wz(out), attn_dict
+        return self.Wz(out), attn_tensor
         
 
 class TransformerUnit(nn.Module):
@@ -103,7 +105,7 @@ class TransformerUnit(nn.Module):
             X: tensor, (batch, sequence length, input_size)
         """
         # z is tensor of size (batch, sequence length, input_size)
-        z, attn_mhead_dict = self.multihead_attn(X)
+        z, attn_mhead_tensor = self.multihead_attn(X)
         # layer norm with residual connection
         z = self.layernorm_1(z + X)
         z = self.dropout(z)
@@ -111,7 +113,7 @@ class TransformerUnit(nn.Module):
         z = self.layernorm_2(z_ff + z)
         z = self.dropout(z)
         
-        return z, attn_mhead_dict
+        return z, attn_mhead_tensor
 
 """
       implement position encoder based on cosine and sine approach proposed 
@@ -300,13 +302,14 @@ class Categ_CrisCasTransformer(nn.Module):
         # (batch, seqlen, embedding dim)
         X_embpos = self.nucleopos_embedder(X)
         # z is tensor of size (batch,  seqlen, embedding dim)
-        # z = self.trfunit_pipeline(X_embpos)
-        attn_mlayer_mhead_dict = {}
+        bsize, num_positions, inp_dim = X_embpos.shape
+        attn_tensor = X_embpos.new_zeros((bsize, num_positions, num_positions))
         xinput = X_embpos
-        for count, trfunit in enumerate(self.trfunit_pipeline):
-            z, attn_mhead_dict = trfunit(xinput)
-            attn_mlayer_mhead_dict[f'l{count}'] = attn_mhead_dict
+        for trfunit in self.trfunit_pipeline:
+            z, attn_mhead_tensor = trfunit(xinput)
             xinput = z
+            attn_tensor += attn_mhead_tensor
+        attn_tensor = attn_tensor/len(self.trfunit_pipeline)
 
          # pool across seqlen vectors
         if not self.per_base:
@@ -323,4 +326,4 @@ class Categ_CrisCasTransformer(nn.Module):
                 z, fattn_w_norm = self.pooling(z)
             y = self.Wy(z) + self.bias
         
-        return self.log_softmax(y), fattn_w_norm, attn_mlayer_mhead_dict
+        return self.log_softmax(y), fattn_w_norm, attn_tensor

@@ -4,29 +4,31 @@ from torch import nn
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
+
 class SeqMaskGenerator(object):
     def __init__(self, seqconfig):
 
         self.seqconfig = seqconfig
 
     def create_enc_mask(self, enc_inp): 
-        
         #enc_inp = [N, inp_seq_len]
         # N is total number of input sequences
         bsize, seq_len = enc_inp.shape
-        #enc_mask.shape = [1, 1, inp_seq_len, inp_seq_len]
-        enc_mask = np.ones((1, 1, seq_len, seq_len))
-        #enc_mask.shape = [1, 1, inp_seq_len, inp_seq_len]
-        # enc_mask = enc_mask.reshape(1, 1, seq_len, seq_len)
-        #enc_mask.shape = [bsize, 1, inp_seq_len, inp_seq_len]
-        enc_mask = np.repeat(enc_mask, bsize, axis=0)
+#         #enc_mask.shape = [1, 1, inp_seq_len, inp_seq_len]
+#         enc_mask = np.ones((1, 1, seq_len, seq_len))
+#         #enc_mask.shape = [1, 1, inp_seq_len, inp_seq_len]
+#         # enc_mask = enc_mask.reshape(1, 1, seq_len, seq_len)
+#         #enc_mask.shape = [bsize, 1, inp_seq_len, inp_seq_len]
+#         enc_mask = np.repeat(enc_mask, bsize, axis=0)
+        enc_mask = np.full((bsize,1, seq_len, seq_len), 1)
         return enc_mask
 
     def create_enc_dec_mask(self, num_samples):
         inp_seqlen = self.seqconfig.seq_len
         outp_seqlen = self.seqconfig.ewindow_end+1
-        enc_dec_mask = np.ones((1,1, outp_seqlen, inp_seqlen))
-        enc_dec_mask = np.repeat(enc_dec_mask, num_samples, axis=0)
+#         enc_dec_mask = np.ones((1,1, outp_seqlen, inp_seqlen))
+#         enc_dec_mask = np.repeat(enc_dec_mask, num_samples, axis=0)
+        enc_dec_mask = np.full((num_samples, 1, outp_seqlen, inp_seqlen), 1)
         return enc_dec_mask
 
 
@@ -39,7 +41,7 @@ class SeqMaskGenerator(object):
         seqconfig = self.seqconfig
         num_haplotypes = mask_targetbase.shape[0]
         ewindow_st, ewindow_end = seqconfig.ewindow_st, seqconfig.ewindow_end
-        
+#         ewindow_st = 0
         # 6-13
 #         print('ewindow_st:', ewindow_st, 'ewindow_end:', ewindow_end)
         
@@ -99,9 +101,8 @@ class HaplotypeDataTensor(Dataset):
         target_conv = [] # list of tensors, (N x num_haplotypes x outp_sequence_len)
         target_conv_onehot = [] # list of tensors (i.e. one-hot encoding), (N x num_haplotypes x outp_sequence_len x 2 x 1)
         target_prob = [] # list of tensors, (N x num_haplotypes)
-        mask_enc = []
         mask_dec = []
-        indx_seqid_map = {} # dict, int_id:target_seq
+        indx_seqid_map = {} # dict, int_id:(seqid, target_seq)
         inpseq_outpseq_map = {} # dict([]), int_id:[outp_seq1, out_seq2, ....]
 
         seqconfig = self.seqconfig
@@ -112,7 +113,7 @@ class HaplotypeDataTensor(Dataset):
         
         # output sequence will be from 0:end of editable window indx
 
-        for gr_name, gr_df in tqdm(proc_df.groupby(by=['Inp_seq'])):
+        for gr_name, gr_df in tqdm(proc_df.groupby(by=['seq_id', 'Inp_seq'])):
             
             Xinp_enc.append(gr_df[[f'Inp_B{i}' for i in range(1,seq_len+1)]].values[0,:])
             Xinp_dec.append(gr_df[[f'Outp_B{i}' for i in range(1,seq_len+1)]].values[:,0:seqconfig.ewindow_end+1])
@@ -131,11 +132,10 @@ class HaplotypeDataTensor(Dataset):
             inpseq_id = len(indx_seqid_map)
             indx_seqid_map[inpseq_id] = gr_name
             inpseq_outpseq_map[inpseq_id] = gr_df['Outp_seq'].values.tolist()
-        mask_enc = mask_generator.create_enc_mask(np.array(Xinp_enc))
-        mask_encdec = mask_generator.create_enc_dec_mask(len(Xinp_enc))
-        # print('mask_enc.shape:',mask_enc.shape)
-        # print('mask_encdec.shape:', mask_encdec.shape)
         
+        mask_enc = None
+        mask_encdec = None
+
         # tensorize
         print('--- tensorizing ---')
         device_cpu = torch.device('cpu')
@@ -149,9 +149,12 @@ class HaplotypeDataTensor(Dataset):
             self.target_prob = [torch.from_numpy(arr).float().to(device_cpu) for arr in target_prob]
         else:
             self.target_prob = None
-        self.mask_enc = torch.tensor(mask_enc).long().to(device_cpu)
+
+        self.mask_enc = mask_enc
+        self.mask_encdec = mask_encdec
+
         self.mask_dec = [torch.from_numpy(arr).long().to(device_cpu) for arr in mask_dec]
-        self.mask_encdec = torch.tensor(mask_encdec).long().to(device_cpu)
+        
         self.num_samples = len(self.Xinp_enc) # int, number of sequences
         self.indx_seqid_map = indx_seqid_map
         self.inpseq_outpseq_map = inpseq_outpseq_map
@@ -165,26 +168,18 @@ class HaplotypeDataTensor(Dataset):
     def __getitem__(self, indx):
 
         if self.target_prob is None:
-            return(self.Xinp_enc[indx], 
-                   self.Xinp_dec[indx],
-                   self.mask_enc[indx],
-                   self.mask_dec[indx],
-                   self.mask_encdec[indx],
-                   self.mask_inp_targetbase[indx],
-                   self.target_conv_onehot[indx],
-                   None,
-                   indx,
-                   self.indx_seqid_map[indx],
-                   self.inpseq_outpseq_map[indx])
-                   
+            return_target_prob = None
+        else:
+            return_target_prob = self.target_prob[indx]
+
         return(self.Xinp_enc[indx], 
                self.Xinp_dec[indx],
-               self.mask_enc[indx],
+               self.mask_enc,
                self.mask_dec[indx],
-               self.mask_encdec[indx],
+               self.mask_encdec,
                self.mask_inp_targetbase[indx],
                self.target_conv_onehot[indx],
-               self.target_prob[indx],
+               return_target_prob,
                indx,
                self.indx_seqid_map[indx],
                self.inpseq_outpseq_map[indx])     
@@ -212,9 +207,12 @@ def print_data_example(elm):
     Xinp_enc, Xinp_dec, mask_enc, mask_dec, mask_encdec, mask_targetbase_enc, target_conv_onehot, target_prob, indx, seqid = elm
     print('Xinp_enc:\n', Xinp_enc, 'shape:', Xinp_enc.shape)
     print('Xinp_dec:\n',Xinp_dec, 'shape:',Xinp_dec.shape)
-    print('mask_enc:\n', mask_enc, 'shape:',mask_enc.shape)
+    if mask_enc is not None:
+        print('mask_enc:\n', mask_enc, 'shape:',mask_enc.shape)
     print('mask_dec:\n',mask_dec, 'shape:',mask_dec.shape)
-    print('mask_encdec:\n', mask_encdec, 'shape:',mask_encdec.shape)
+    if mask_encdec is not None:
+        print('mask_encdec:\n', mask_encdec, 'shape:',mask_encdec.shape)
+
     print('mask_targetbase_enc:\n', mask_targetbase_enc,'shape:', mask_targetbase_enc.shape)
     print('target_conv_onehot:\n',target_conv_onehot, 'shape:',target_conv_onehot.shape)
     if target_prob is not None:
