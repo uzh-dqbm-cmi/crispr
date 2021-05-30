@@ -61,10 +61,11 @@ class SeqProcessConfig(object):
         return tb.get_string()
 
 class HaplotypeSeqProcessor(object):
-    def __init__(self, base_editor, conversion_nucl, seqconfig):
+    def __init__(self, base_editor, conversion_nucl, seqconfig, max_num_targets=12):
         self.base_editor = base_editor
         self.conversion_nucl = conversion_nucl
         self.seqconfig = seqconfig
+        self.max_num_targets = max_num_targets
         self.describe()
         
     def describe(self):
@@ -73,6 +74,7 @@ class HaplotypeSeqProcessor(object):
         tb.add_row(['Base editor', self.base_editor])
         tb.add_row(['Target nucleotide', self.conversion_nucl[0]])
         tb.add_row(['Conversion nucleotide', self.conversion_nucl[1]])
+        tb.add_row(['Maximum number of targets considered', self.max_num_targets])
         print(tb)
         print(self.seqconfig)
 
@@ -81,18 +83,26 @@ class HaplotypeSeqProcessor(object):
         return tb_nucl, cb_nucl
 
     def remove_viol_seqs(self, df, inpseq_col):
+        """
+        Args:
+            df: dataframe
+            inpseq_col: string, column name of input sequence such as "Inp_seq"
+        """
         print('--- checking for violating seqs ---')
         seq_df = df.copy()
         tb_nucl, __ = self.conversion_nucl
         seqlen = self.seqconfig.seq_len
-        viol_seqs = []      
-        for elm in seq_df[inpseq_col].unique():
-            assert len(elm) == seqlen, f'protospacer sequence should be equal to {seqlen} nt'
-            if tb_nucl not in elm:
-                viol_seqs.append(elm)
-                print(elm)
-        df_clean = seq_df.loc[~seq_df[inpseq_col].isin(viol_seqs)].copy()
-        df_clean.reset_index(inplace=True, drop=True)
+        viol_seqs = []
+        
+        cond_letter = ~seq_df[inpseq_col].str.contains(tb_nucl)
+        cond_len = ~seq_df[inpseq_col].str.len() == seqlen
+        df_clean = seq_df
+        if cond_len.any() or cond_letter.any():
+            cond = cond_letter | cond_len
+            print(seq_df.loc[cond, inpseq_col])
+            df_clean = seq_df.loc[~cond].copy()
+            df_clean.reset_index(inplace=True, drop=True)
+   
         return df_clean
 
     def _check_duplicates(self, gdf, outcomeseq_colname, pbar, prg_counter):
@@ -102,10 +112,17 @@ class HaplotypeSeqProcessor(object):
         pbar.update(prg_counter)
         return gdf_clean
 
-    def preprocess_df(self, df, inpseq_colname, outcomeseq_colname):
+    def preprocess_df(self, df, inpseq_colnames, outcomeseq_colname):
+        """
+        Args:
+            df: dataframe
+            inpseq_colnames: list of column names such as ['seq_id', 'Inp_seq']
+            outcomeseq_colname: string, column name of observed outcome sequences
+        
+        """
         print('--- removing duplicates (if found!) ---')
         prg_counter=0
-        dfg = df.groupby(by=[inpseq_colname])
+        dfg = df.groupby(by=inpseq_colnames)
         pbar = tqdm(total=dfg.ngroups)
         df_clean = dfg.apply(self._check_duplicates, outcomeseq_colname, pbar, prg_counter)
         pbar.close()
@@ -113,20 +130,21 @@ class HaplotypeSeqProcessor(object):
         return df_clean
 
 
-    def renormalize_outcome_prop(self, df, by_col, prop_col):
+    def renormalize_outcome_prop(self, df, by_cols, prop_col):
         """ renormalize the outcome sequence probability (optional, in case it is not normalized!)
         Args:
             df:pd.DataFrame, read data frame
-            by_col: string, input sequence column name
+            by_cols: list, input sequence column name/s such as ['seq_id', 'Inp_seq']
             prop_col: string, outcome propotion (i.e. probability) column name
 
         .. Note:
             this method is run after using :func:`preprocess_df`
         """
-        a = df.groupby(by=[by_col], as_index=False)[prop_col].sum()
+        print('--- renormalizing outcome proportion ---')
+        a = df.groupby(by=by_cols, as_index=False)[prop_col].sum()
         a['denom'] = a[prop_col]
         b = df.copy()
-        b = b.merge(a, on=[by_col], how='left')
+        b = b.merge(a, on=by_cols, how='left')
         validate_df(b)
         b['prob'] = b[f'{prop_col}_x']/b['denom']
         b[prop_col] = b['prob']
@@ -144,41 +162,55 @@ class HaplotypeSeqProcessor(object):
         """ Generates combinatorial outcome sequences based on identified canonical bases
 
         Args:
-            df:pd.DataFrame, read data frame
+            df:pd.DataFrame, processed dataframe using  :func:`process_inp_outp_df` function
         """
         print('--- generating edit combinations ---')
+#         print(df.columns)
+#         print(df.shape)
+        
         seqconfig = self.seqconfig
         conv_nl = self.conversion_nucl
         tb_nucl, cb_nucl = conv_nl
         e_st = seqconfig.ewindow_st
         e_end = seqconfig.ewindow_end
         seqlen = seqconfig.seq_len
+        max_num_targets=self.max_num_targets
+        
         res_df_lst = []
-        target_cols = ['Inp_seq', 'Outp_seq']
+        target_cols = ['seq_id', 'Inp_seq', 'Outp_seq']
 
         for row in tqdm(df.iterrows()):
             indx, record = row
             rec_nucl = record[[f'Inp_L{i}'for i in range(e_st+1,e_end+2)]]
 
             # print('indx:', indx)
-            # print(rec_nucl)
+#             print(rec_nucl)
 
             tbase_indices = np.where(rec_nucl==tb_nucl)[0]
-            # print('tbase_indices:\n', tbase_indices)
+#             print('tbase_indices:\n', tbase_indices)
+            
+            if len(tbase_indices) > max_num_targets:
+                tbase_indices = tbase_indices[:max_num_targets]
+
+                
+#             print('e_st:', e_st)
+#             print('e_end:', e_end)
+#             print('tbase_indices:\n', tbase_indices)
+
             comb_nucl_opt= self._generate_combinatorial_conversion(tbase_indices, conv_nl)
             comb_nucl_opt = list(comb_nucl_opt)
             num_options = len(comb_nucl_opt)
-            # print(comb_nucl_opt)
+#             print(comb_nucl_opt)
             comb_nucl_arr = np.repeat(rec_nucl.values.reshape(1,-1),num_options,axis=0)
-            # print(comb_nucl_arr)
+#             print(comb_nucl_arr)
             for i_arr, opt in enumerate(comb_nucl_opt):
                 # print('i_arr:', i_arr)
                 # print('opt:',opt)
                 comb_nucl_arr[i_arr, tbase_indices]= opt
-            # print(comb_nucl_arr)
+#             print(comb_nucl_arr)
             comb_nucl_df = pd.DataFrame(comb_nucl_arr)
             comb_nucl_df.columns = [f'Inp_L{i}'for i in range(e_st+1,e_end+2)]
-            # print(comb_nucl_df)
+#             print(comb_nucl_df)
             
             pre_ew_col = record[[f'Inp_L{i}'for i in range(1,e_st+1)]]
             post_ew_col = record[[f'Inp_L{i}'for i in range(e_end+2,seqlen+1)]]
@@ -192,10 +224,13 @@ class HaplotypeSeqProcessor(object):
             # print(b)
             
             # print(record['Inp_seq'])
-            seqid_df = pd.DataFrame([record['Inp_seq']]*num_options)
-            seqid_df.columns = ['Inp_seq']
+            inpseq_df = pd.DataFrame([record['Inp_seq']]*num_options)
+            inpseq_df.columns = ['Inp_seq']
             
-            res_df = pd.concat([seqid_df,a, comb_nucl_df, b], axis=1)
+            seqid_df = pd.DataFrame([record['seq_id']]*num_options)
+            seqid_df.columns = ['seq_id']
+            
+            res_df = pd.concat([seqid_df,inpseq_df, a, comb_nucl_df, b], axis=1)
             # print()
             # print(res_df)
             
@@ -204,10 +239,12 @@ class HaplotypeSeqProcessor(object):
             res_df_lst.append(res_df[target_cols])
             # print('-'*15)
         comb_final_df = pd.concat(res_df_lst, axis=0)
+#         print('comb_final_df:\n', comb_final_df.columns)
         
         return comb_final_df
 
-    def process_inp_outp_df(self, df, t_inp_col, t_outp_col, outcome_prop_col):
+    
+    def process_inp_outp_df(self, df, seqid_col, t_inp_col, t_outp_col, outcome_prop_col):
         """
         df:pd.DataFrame, read data frame
         t_inp_col: string, input sequence column name
@@ -216,17 +253,23 @@ class HaplotypeSeqProcessor(object):
         outcome_prop_col: string, outcome propotion (i.e. probability of outcome sequence) column name
                           None, when performing inference
         """
+#         print()
+#         print('__ process_inp_outp __')
+#         print('df.columns:', df.columns)
+#         print()
+        max_num_targets = self.max_num_targets
+        pbar = tqdm(total=100)
+        seq_len = self.seqconfig.seq_len
+        tb_nucl, cb_nucl = self._determine_target_complem_nucl()
+        
+        inp_df = self._process_df(df, seqid_col, t_inp_col, tb_nucl, 'Inp')
+            
         if t_outp_col is not None:
-            pbar = tqdm(total=100)
-            # ['_process_df', 'merging_results'])
-            seq_len = self.seqconfig.seq_len
-            tb_nucl, cb_nucl = self._determine_target_complem_nucl()
-            inp_df = self._process_df(df, t_inp_col, tb_nucl, 'Inp')
             pbar.update(25)
-            outp_df = self._process_df(df, t_outp_col, cb_nucl, 'Outp')
+            outp_df = self._process_df(df, seqid_col, t_outp_col, cb_nucl, 'Outp')
             pbar.update(50)
             conv_mat = inp_df[[f'Inp_M{i}' for i in range(1,seq_len+1)]].values & \
-                    outp_df[[f'Outp_M{i}' for i in range(1,seq_len+1)]].values
+                       outp_df[[f'Outp_M{i}' for i in range(1,seq_len+1)]].values
             conv_df = pd.DataFrame(conv_mat)
             conv_df.columns = [f'conv{tb_nucl}{cb_nucl}_{i}' for i in range(1,seq_len+1)]
             pbar.update(75)
@@ -236,17 +279,17 @@ class HaplotypeSeqProcessor(object):
                 proc_df = pd.concat([inp_df, outp_df, conv_df], axis=1)
 
         else:
-            pbar = tqdm(total=100)
-            # ['_process_df', 'merging_results'])
-            seq_len = self.seqconfig.seq_len
-            tb_nucl, cb_nucl = self._determine_target_complem_nucl()
-            inp_df = self._process_df(df, t_inp_col, tb_nucl, 'Inp')
             pbar.update(50)
             proc_df = inp_df
             pbar.update(75)
+  
+        # remove double seq_id columns
+        proc_df = proc_df.loc[:,~proc_df.columns.duplicated()]
         pbar.update(100)
         pbar.close()
+#         print('proc_df.columns:', proc_df.columns)
         validate_df(proc_df)
+#         print()
         return proc_df
     
     def _get_char(self,seq):
@@ -254,7 +297,7 @@ class HaplotypeSeqProcessor(object):
         chars = list(seq)
         return pd.Series(chars)
     
-    def _process_df(self, df, tcol, target_base, suffix):
+    def _process_df(self, df, seqid_col, tcol, target_base, suffix):
         """cleans a data frame representing sequences and their edit info obtained from crispr experiment
 
         Args:
@@ -267,6 +310,11 @@ class HaplotypeSeqProcessor(object):
             assumed columns in the dataframe are:
         """
         ## process outcome sequences
+#         print('__ process_df __')
+#         print(df.columns)
+        
+        seqid_df = pd.DataFrame(df[seqid_col].copy())
+        seqid_df.columns = ['seq_id']
         df = pd.DataFrame(df[tcol].copy())
         seq_colname = f'{suffix}_seq'
         df.columns = [seq_colname]
@@ -285,12 +333,17 @@ class HaplotypeSeqProcessor(object):
 
         # replace base letters with numbers
         baseseq_df.replace(['A', 'C', 'T', 'G'], [0,1,2,3], inplace=True)
-        base_df = pd.concat([base_mask,
+        
+        base_df = pd.concat([seqid_df,
+                             base_mask,
                              df,
                              baseseq_letters_df,
                              baseseq_df], axis=1)
         base_df.reset_index(inplace=True, drop=True)
         return base_df
+    
+def validate_df(df):
+    print('number of NA:', df.isna().any().sum())
 
 class VizInpOutp_Haplotype(object):
 
@@ -308,11 +361,21 @@ class VizInpOutp_Haplotype(object):
     
     def __init__(self):
         pass
-    
-        
+ 
+
     @classmethod
     def viz_align_haplotype(clss, df, seqid, outcome_colname, seqconfig, conv_nl, predscore_thr=0., return_type='html'):
-
+        """
+        Args:
+            df: processed dataframe using HaplotypeSeqProcessor.process_inp_outp_df
+            seqid: string, sequence id
+            outcome_colname: string or None, the ground truth outcome proportion
+            seqconfig: instance of SeqProcessConfig class
+            conv_nl: tuple of (target nucleotide, transition nucleotide)
+            predscore_thr: float, probability threshold 
+            return_type: string, default `html`
+        
+        """
         seq_len = seqconfig.seq_len
         seq_st, seq_end = seqconfig.seq_st, seqconfig.seq_end
         ewindow_st, ewindow_end = seqconfig.ewindow_st, seqconfig.ewindow_end
@@ -324,14 +387,15 @@ class VizInpOutp_Haplotype(object):
         tb = PrettyTable()
         tb.field_names = ['Desc.'] + [f'{i}' for i in range(1, seq_len+1)]
         
-        cond = df['Inp_seq'] == seqid
+        cond = df['seq_id'] == seqid
         cond_thr = df['pred_score'] >= predscore_thr
         df = df.loc[(cond) & (cond_thr)].copy()
         # sort df by outcome probability
         if outcome_colname is not None:
-            df.sort_values(by=[outcome_colname], ascending=False, inplace=True)
-        # else:
-        #     df.sort_values(by=['pred_score'], ascending=False, inplace=True)
+            sortcol = outcome_colname
+        else:
+            sortcol = 'pred_score'
+        df.sort_values(by=[sortcol], ascending=False, inplace=True)
 
         # get the input sequence
         inp_nucl = df.iloc[0][[f'Inp_L{i}' for i in range(1,seq_len+1)]].values
@@ -391,10 +455,6 @@ class VizInpOutp_Haplotype(object):
                 color = html_colors[nucl_colrmap[nucl]]
             html_str = re.sub(f'<td>{ctext}', '<td bgcolor="{}">'.format(color), html_str)
         return html_str
-
-def validate_df(df):
-    print('number of NA:', df.isna().any().sum())
-
 class HaplotypeVizFile():
     def __init__(self, resc_pth):
         # resc_pth: viz resources folder path

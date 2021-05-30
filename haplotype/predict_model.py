@@ -20,26 +20,37 @@ class BEDICT_HaplotypeModel:
         self.seqconfig = seqconfig
         self.device = device
 
-    def _process_df(self, df, inpseq_col, outpseq_col=None, outcome_col=None, renormalize=True):
+    def _process_df(self, df, inpseq_cols, outpseq_col=None, outcome_col=None, renormalize=True):
+        """
+        Args:
+            df: pandas dataframe
+            inpseq_cols: list of column names containing `sequence id` and `input sequence` such as ['seq_id', 'Inp_seq']
+            outpseq_col: string, column name of output sequence (i.e. edit combination)
+            outcome_col: string, column name of outcome propotion
+            renormalize: boolean, for renormalizing outcome proportion
+        """
         print('--- processing input data frame ---')
         df = df.copy()
+        seqid_col = inpseq_cols[0] # seqid column
+        inpseq_col = inpseq_cols[-1] # Inp_seq column
         if outpseq_col is None:
             # case where the model is given list of sequeneces to generate haplotype for
-            df.drop_duplicates(subset=[inpseq_col], ignore_index=True, inplace=True, keep='first')
+            df.drop_duplicates(subset=inpseq_cols, ignore_index=True, inplace=True, keep='first')
             validate_df(df)
             df = self.seq_processor.remove_viol_seqs(df, inpseq_col)
-            proc_df = self.seq_processor.process_inp_outp_df(df, inpseq_col, None, None)
+            proc_df = self.seq_processor.process_inp_outp_df(df, seqid_col, inpseq_col, None, None)
             comb_df = self.seq_processor.generate_combinatorial_outcome(proc_df)
-            proc_df = self.seq_processor.process_inp_outp_df(comb_df, 'Inp_seq', 'Outp_seq', None)
+            proc_df = self.seq_processor.process_inp_outp_df(comb_df, 'seq_id', 'Inp_seq', 'Outp_seq', None)
         else:
             # case where the model is given list of input sequences and their outcome sequences to evaluate
             # probability of each outcome sequence
-            df = self.seq_processor.preprocess_df(df, inpseq_col, outpseq_col)
+            df = self.seq_processor.preprocess_df(df, inpseq_cols, outpseq_col)
             df = self.seq_processor.remove_viol_seqs(df, inpseq_col)
+            validate_df(df)
             # TODO: add flag to check if to apply renormalization routine
             if renormalize:
-                df = self.seq_processor.renormalize_outcome_prop(df, inpseq_col, outcome_col)
-            proc_df = self.seq_processor.process_inp_outp_df(df, inpseq_col, outpseq_col, outcome_col)
+                df = self.seq_processor.renormalize_outcome_prop(df, inpseq_cols, outcome_col)
+            proc_df = self.seq_processor.process_inp_outp_df(df, seqid_col, inpseq_col, outpseq_col, outcome_col)
 
         return proc_df
 
@@ -68,7 +79,7 @@ class BEDICT_HaplotypeModel:
         print('--- building model ---')
         mconfig, options = config
         model_config = mconfig['model_config']
-        inp_seqlen = options.get('inp_seqlen', 30)
+        inp_seqlen = options.get('inp_seqlen')
         encoder = Encoder(model_config.embed_dim,
                           num_nucleotides=4, 
                           seq_length=inp_seqlen, 
@@ -80,7 +91,7 @@ class BEDICT_HaplotypeModel:
                           pooling_mode='attn', 
                           multihead_type=model_config.multihead_type)
 
-        outp_seqlen = options.get('outp_seqlen', 14)
+        outp_seqlen = options.get('outp_seqlen')
         decoder = Decoder(model_config.embed_dim, 
                           num_nucleotides=4, 
                           seq_length=outp_seqlen,
@@ -135,9 +146,7 @@ class BEDICT_HaplotypeModel:
 
                 Xinp_enc = Xinp_enc.to(device)
                 Xinp_dec = Xinp_dec.to(device)
-                mask_enc = mask_enc.to(device)
                 mask_dec = mask_dec.to(device)
-                mask_encdec = mask_encdec.to(device)
 
                 mask_targetbase_enc = mask_targetbase_enc.to(device)
                 target_conv_onehot = target_conv_onehot.to(device)
@@ -160,9 +169,9 @@ class BEDICT_HaplotypeModel:
                     out = pred_logprob_resh.matmul(conv_onehot_resh.type(torch.float32))
                     # (num_haplotypes, seqlen)
                     out = out.reshape(num_haplotypes, hap_seqlen)
-                    tindx= torch.where(mask_targetbase_enc.type(torch.bool))
+                    tindx = torch.where(mask_targetbase_enc.type(torch.bool))
 
-                    pred_hap_logprob = out[tindx].view(num_haplotypes,-1).sum(axis=1)
+                    pred_hap_logprob = out[tindx].view(num_haplotypes, -1).sum(axis=1)
 
                     pred_score.extend(torch.exp(pred_hap_logprob).view(-1).tolist())
                     if refscore_avail:
@@ -177,8 +186,17 @@ class BEDICT_HaplotypeModel:
 
         return predictions_df
         
-    def prepare_data(self, df, inpseq_col, outpseq_col=None, outcome_col=None, renormalize=True, batch_size=500):
-        proc_df = self._process_df(df, inpseq_col, outpseq_col, outcome_col, renormalize=renormalize)
+    def prepare_data(self, df, inpseq_cols, outpseq_col=None, outcome_col=None, renormalize=True, batch_size=500):
+        """
+        Args:
+            df: pandas dataframe
+            inpseq_cols: list of column names containing `sequence id` and `input sequence` such as ['seq_id', 'Inp_seq']
+            outpseq_col: string, column name of output sequence (i.e. edit combination)
+            outcome_col: string, column name of outcome propotion
+            renormalize: boolean, for renormalizing outcome proportion
+            batch_size: int, number of samples to process per batch
+        """
+        proc_df = self._process_df(df, inpseq_cols, outpseq_col, outcome_col, renormalize=renormalize)
         dtensor = self._construct_datatensor(proc_df, outcome_col)
         dloader = self._construct_dloader(dtensor, batch_size)
         return dloader
@@ -195,10 +213,19 @@ class BEDICT_HaplotypeModel:
         pred_df = self._run_prediction(model, dloader, refscore_avail)
         return pred_df
 
-    def predict_from_dataframe(self, df, inpseq_col, model_dir, outpseq_col=None, outcome_col=None, renormalize=True, batch_size=500):
-
+    def predict_from_dataframe(self, df, inpseq_cols, model_dir, outpseq_col=None, outcome_col=None, renormalize=True, batch_size=500):
+        """
+        Args:
+            df: pandas dataframe
+            inpseq_cols: list of column names containing `sequence id` and `input sequence` such as ['seq_id', 'Inp_seq']
+            model_dir: string, path to trained model files
+            outpseq_col: string, column name of output sequence (i.e. edit combination) such as ['Outp_seq']
+            outcome_col: string, column name of outcome propotion such as ['proportion']
+            renormalize: boolean, for renormalizing outcome proportion
+            batch_size: int, number of samples to process per batch
+        """
         refscore_avail = outcome_col
-        proc_df = self._process_df(df, inpseq_col, outpseq_col, outcome_col, renormalize=renormalize)
+        proc_df = self._process_df(df, inpseq_cols, outpseq_col, outcome_col, renormalize=renormalize)
         dtensor = self._construct_datatensor(proc_df, outcome_col)
         dloader = self._construct_dloader(dtensor, batch_size)
         mconfig_dir = os.path.join(model_dir, 'config')
@@ -213,19 +240,29 @@ class BEDICT_HaplotypeModel:
         return pred_df
 
     def compute_avg_predictions(self, df):
-        agg_df = df.groupby(by=['Inp_seq', 'Outp_seq']).mean()
+        agg_df = df.groupby(by=['seq_id','Inp_seq', 'Outp_seq']).mean()
         agg_df.reset_index(inplace=True)
         for colname in ('run_num', 'Unnamed: 0'):
             if colname in agg_df:
                 del agg_df[colname]
         return agg_df
 
-    def visualize_haplotype(self, df, seqsids_lst, inpseq_col, outpseq_col, outcome_col, predscore_thr=0.):
-        proc_df = self.seq_processor.process_inp_outp_df(df, inpseq_col, outpseq_col, outcome_col)
+    def visualize_haplotype(self, df, seqsids_lst, inpseq_cols, outpseq_col, outcome_col, predscore_thr=0.):
+        """
+        Args:
+            df: pandas dataframe
+            inpseq_cols: list of column names containing `sequence id` and `input sequence` such as ['seq_id', 'Inp_seq']
+            outpseq_col: string, column name of output sequence (i.e. edit combination) such as ['Outp_seq']
+            outcome_col: string, column name of outcome propotion such as ['proportion'] or None
+            predscore_thr: float, probability threshold
+        """
+        seqid_col = inpseq_cols[0] # seqid column
+        inpseq_col = inpseq_cols[-1] # Inp_seq column
+        proc_df = self.seq_processor.process_inp_outp_df(df, seqid_col, inpseq_col, outpseq_col, outcome_col)
         conv_nucl = self.seq_processor.conversion_nucl
         seqconfig = self.seq_processor.seqconfig
         out_tb = {}
-        tseqids = set(seqsids_lst).intersection(set(proc_df['Inp_seq'].unique()))
+        tseqids = set(seqsids_lst).intersection(set(proc_df['seq_id'].unique()))
         for tseqid in tqdm(tseqids):
             out_tb[tseqid] = VizInpOutp_Haplotype().viz_align_haplotype(proc_df, 
                                                                  tseqid,

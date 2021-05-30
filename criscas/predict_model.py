@@ -86,6 +86,7 @@ class BEDICT_CriscasModel:
         seqs_ids_lst = []
         base_pos_lst = []
         seqid_fattnw_map = {}
+        seqid_hattnw_map  = {}
 
         for i_batch, samples_batch in enumerate(dloader):
 
@@ -95,10 +96,10 @@ class BEDICT_CriscasModel:
             mask = mask.to(device)
 
             with torch.set_grad_enabled(False):
-                logsoftmax_scores, fattn_w_scores, attn_mlayer_mhead_dict = model(X_batch)
+                logsoftmax_scores, fattn_w_scores, hattn_w_scores = model(X_batch)
 
                 seqid_fattnw_map.update({seqid:fattn_w_scores[c].detach().cpu() for c, seqid in enumerate(b_seqs_id)})
-                # seqid_mlhattnw_map[dsettype].update(process_multilayer_multihead_attn(attn_mlayer_mhead_dict, b_seqs_id))
+                seqid_hattnw_map.update({seqid:hattn_w_scores[c].detach().cpu() for c, seqid in enumerate(b_seqs_id)})
 
                 # __, y_pred_clss = torch.max(logsoftmax_scores, -1)
 
@@ -121,7 +122,7 @@ class BEDICT_CriscasModel:
         predictions_df = build_probscores_df(seqs_ids_lst, prob_scores_arr, base_pos_lst)
 
         
-        return seqid_fattnw_map, predictions_df
+        return seqid_fattnw_map, seqid_hattnw_map, predictions_df
 
         # dump attention weights
         # if wrk_dir:
@@ -129,13 +130,15 @@ class BEDICT_CriscasModel:
         #     predictions_df.to_csv(os.path.join(wrk_dir, f'predictions.csv'))
         
 
-    def _join_prediction_w_attn(self, pred_df, seqid_fattnw_map):
+    def _join_prediction_w_attn(self, pred_df, seqid_fattnw_map, seqid_hattnw_map):
         
         attn_w_lst = []
         for seq_id in seqid_fattnw_map: 
             bpos = pred_df.loc[pred_df['id'] == seq_id,'base_pos'].values
             attn_w = seqid_fattnw_map[seq_id][bpos].numpy()
-            attn_w_lst.append(attn_w)
+            hattn_w = seqid_hattnw_map[seq_id].numpy()
+            upd_attn = np.matmul(attn_w, hattn_w)
+            attn_w_lst.append(upd_attn)
             
         attn_w_df = pd.DataFrame(np.concatenate(attn_w_lst, axis=0))
         attn_w_df.columns = [f'Attn{i}' for i in range(20)]
@@ -166,8 +169,8 @@ class BEDICT_CriscasModel:
         for run_num in range(5):
             self._load_model_statedict_(model, run_num)
             print(f'running prediction for base_editor: {self.base_editor} | run_num: {run_num}')
-            seqid_fattnw_map, pred_df = self._run_prediction(model, dloader)
-            pred_w_attn_df = self._join_prediction_w_attn(pred_df, seqid_fattnw_map)
+            seqid_fattnw_map, seqid_hattnw_map, pred_df = self._run_prediction(model, dloader)
+            pred_w_attn_df = self._join_prediction_w_attn(pred_df, seqid_fattnw_map, seqid_hattnw_map)
             pred_w_attn_df['run_id'] = f'run_{run_num}'
             pred_w_attn_df['model_name'] = self.base_editor
             pred_w_attn_runs_df = pd.concat([pred_w_attn_runs_df, pred_w_attn_df])

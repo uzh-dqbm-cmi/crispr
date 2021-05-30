@@ -8,21 +8,24 @@ import pandas as pd
 
 
 def build_predictions_df(inpseqs_ids, outpseqs_ids, true_score, pred_score):
+     
+    # print(inpseqs_ids)
+    seqid_inpseq_df = pd.DataFrame(inpseqs_ids)
+    seqid_inpseq_df.columns = ['seq_id','Inp_seq']
+
     if true_score is not None:
         df_dict = {
-            'Inp_seq': inpseqs_ids,
             'Outp_seq':outpseqs_ids,
             'true_score': true_score,
             'pred_score': pred_score
         }
     else:
         df_dict = {
-            'Inp_seq': inpseqs_ids,
             'Outp_seq':outpseqs_ids,
             'pred_score': pred_score
         }     
 
-    predictions_df = pd.DataFrame(df_dict)
+    predictions_df = pd.concat([seqid_inpseq_df, pd.DataFrame(df_dict)], axis=1)
     return predictions_df
 
 class ReaderWriter(object):
@@ -140,8 +143,8 @@ def get_cuda_device_stats(device):
     print('total memory available:', torch.cuda.get_device_properties(device).total_memory/(1024**3), 'GB')
     print('total memory allocated on device:', torch.cuda.memory_allocated(device)/(1024**3), 'GB')
     print('max memory allocated on device:', torch.cuda.max_memory_allocated(device)/(1024**3), 'GB')
-    print('total memory cached on device:', torch.cuda.memory_cached(device)/(1024**3), 'GB')
-    print('max memory cached  on device:', torch.cuda.max_memory_cached(device)/(1024**3), 'GB')
+    print('total memory cached on device:', torch.cuda.memory_reserved(device)/(1024**3), 'GB')
+    print('max memory cached  on device:', torch.cuda.max_memory_reserved(device)/(1024**3), 'GB')
 
 def compute_harmonic_mean(a, b):
     if a==0 and b==0:

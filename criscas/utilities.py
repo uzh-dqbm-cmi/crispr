@@ -147,8 +147,8 @@ def get_cuda_device_stats(device):
     print('total memory available:', torch.cuda.get_device_properties(device).total_memory/(1024**3), 'GB')
     print('total memory allocated on device:', torch.cuda.memory_allocated(device)/(1024**3), 'GB')
     print('max memory allocated on device:', torch.cuda.max_memory_allocated(device)/(1024**3), 'GB')
-    print('total memory cached on device:', torch.cuda.memory_cached(device)/(1024**3), 'GB')
-    print('max memory cached  on device:', torch.cuda.max_memory_cached(device)/(1024**3), 'GB')
+    print('total memory cached on device:', torch.cuda.memory_reserved(device)/(1024**3), 'GB')
+    print('max memory cached  on device:', torch.cuda.max_memory_reserved(device)/(1024**3), 'GB')
 
 
 def check_na(df):
