@@ -67,7 +67,7 @@ The version of the `required` packages used in `setup.py` were:
 
 ### Webapp 🕸️
 
-A running instance supporting both models `BE-DICT (perbase)` & `BE-DICT (bystander)` model can be accessed at this [link](http://be-dict.org).
+A running instance supporting both models `BE-DICT (perbase)` & `BE-DICT (bystander)` can be accessed at this [link](http://be-dict.org).
 
 ### Citation
 
