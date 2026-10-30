@@ -6,7 +6,9 @@ Repository containing `python` packages for running `BE-DICT` models. There are 
    - `criscas` for instantiating `per-base` model and 
    - `haplotype` for instantiating `bystander` model. 
 
-For more info about this research, see our [preprint](https://www.biorxiv.org/content/10.1101/2020.07.05.186544v1) on biorxiv.
+For more info about this research, see our [paper](https://dx.doi.org/10.1038/s41467-021-25375-z) in Nature Communications.
+
+Our follow-up research [BE-DICT 2.0](https://github.com/uzh-dqbm-cmi/BEDICT-V2) is available [here](https://dx.doi.org/10.1186/s13059-025-03586-7).
 
 ### Installation
 
@@ -65,21 +67,22 @@ The version of the `required` packages used in `setup.py` were:
 * `prettytable` &gt;= `'2.0.0'`
 * `tqdm` &gt;= `'4.56.2'`
 
-### Webapp 🕸️
-
-A running instance supporting both models `BE-DICT (perbase)` & `BE-DICT (bystander)` can be accessed at this [link](http://be-dict.org).
 
 ### Citation
 
 If you find our work is useful in your research, please cite the following paper:
 
-> @article {Marquart2020.07.05.186544,  
-	author = {Marquart, Kim F. and Allam, Ahmed and Janjuha, Sharan and Sintsova, Anna and Villiger, Lukas and Frey, Nina and Krauthammer, Michael and Schwank, Gerald},  
-	title = {Predicting base editing outcomes with an attention-based deep learning algorithm trained on high-throughput target library screens},  
-	elocation-id = {2020.07.05.186544},  
-	year = {2020},  
-	doi = {10.1101/2020.07.05.186544},  
-	URL = {https://www.biorxiv.org/content/early/2020/07/05/2020.07.05.186544},  
-	eprint = {https://www.biorxiv.org/content/early/2020/07/05/2020.07.05.186544.full.pdf},  
-	journal = {bioRxiv}  
+```bibtex
+@article{Marquart2021,
+  author  = {Marquart, Kim F. and Allam, Ahmed and Janjuha, Sharan and Sintsova, Anna and Villiger, Lukas and Frey, Nina and Krauthammer, Michael and Schwank, Gerald},
+  title   = {Predicting base editing outcomes with an attention-based deep learning algorithm trained on high-throughput target library screens},
+  journal = {Nature Communications},
+  year    = {2021},
+  volume  = {12},
+  number  = {1},
+  pages   = {5114},
+  doi     = {10.1038/s41467-021-25375-z},
+  url     = {https://doi.org/10.1038/s41467-021-25375-z},
+  publisher = {Springer Nature}
 }
+```
